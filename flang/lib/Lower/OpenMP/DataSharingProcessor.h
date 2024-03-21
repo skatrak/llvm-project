@@ -12,6 +12,7 @@
 #ifndef FORTRAN_LOWER_DATASHARINGPROCESSOR_H
 #define FORTRAN_LOWER_DATASHARINGPROCESSOR_H
 
+#include "ClauseOperands.h"
 #include "Clauses.h"
 #include "flang/Lower/AbstractConverter.h"
 #include "flang/Lower/OpenMP.h"
@@ -24,23 +25,6 @@ namespace lower {
 namespace omp {
 
 class DataSharingProcessor {
-public:
-  /// Collects all the information needed for delayed privatization. This can be
-  /// used by ops with data-sharing clauses to properly generate their regions
-  /// (e.g. add region arguments) and map the original SSA values to their
-  /// corresponding OMP region operands.
-  struct DelayedPrivatizationInfo {
-    // The list of symbols referring to delayed privatizer ops (i.e.
-    // `omp.private` ops).
-    llvm::SmallVector<mlir::SymbolRefAttr> privatizers;
-    // SSA values that correspond to "original" values being privatized.
-    // "Original" here means the SSA value outside the OpenMP region from which
-    // a clone is created inside the region.
-    llvm::SmallVector<mlir::Value> originalAddresses;
-    // Fortran symbols corresponding to the above SSA values.
-    llvm::SmallVector<const Fortran::semantics::Symbol *> symbols;
-  };
-
 private:
   bool hasLastPrivateOp;
   mlir::OpBuilder::InsertPoint lastPrivIP;
@@ -57,7 +41,6 @@ private:
   Fortran::lower::pft::Evaluation &eval;
   bool useDelayedPrivatization;
   Fortran::lower::SymMap *symTable;
-  DelayedPrivatizationInfo delayedPrivatizationInfo;
 
   bool needBarrier();
   void collectSymbols(Fortran::semantics::Symbol::Flag flag);
@@ -67,9 +50,10 @@ private:
   void collectSymbolsForPrivatization();
   void insertBarrier();
   void collectDefaultSymbols();
-  void privatize();
-  void defaultPrivatize();
-  void doPrivatize(const Fortran::semantics::Symbol *sym);
+  void privatize(PrivateClauseOps *clauseOps);
+  void defaultPrivatize(PrivateClauseOps *clauseOps);
+  void doPrivatize(const Fortran::semantics::Symbol *sym,
+                   PrivateClauseOps *clauseOps);
   void copyLastPrivatize(mlir::Operation *op);
   void insertLastPrivateCompare(mlir::Operation *op);
   void cloneSymbol(const Fortran::semantics::Symbol *sym);
@@ -103,16 +87,12 @@ public:
   // Step2 performs the copying for lastprivates and requires knowledge of the
   // MLIR operation to insert the last private update. Step2 adds
   // dealocation code as well.
-  void processStep1();
+  void processStep1(PrivateClauseOps *clauseOps = nullptr);
   void processStep2(mlir::Operation *op, bool isLoop);
 
   void setLoopIV(mlir::Value iv) {
     assert(!loopIV && "Loop iteration variable already set");
     loopIV = iv;
-  }
-
-  const DelayedPrivatizationInfo &getDelayedPrivatizationInfo() const {
-    return delayedPrivatizationInfo;
   }
 };
 
